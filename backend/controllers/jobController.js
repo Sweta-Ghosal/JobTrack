@@ -51,14 +51,46 @@ const createJobApplication = async (req, res) => {
 // Get all job applications for the logged-in user
 const getJobApplications = async (req, res) => {
     try {
-        const jobApplications = await JobApplication.find({
-            user: req.userId
-        }).sort({ createdAt: -1 });
+        const { search, status, jobType, page = 1, limit = 10 } = req.query;
+        const pageNumber = Number(page);
+const limitNumber = Number(limit);
+const skip = (pageNumber - 1) * limitNumber;
 
-        res.status(200).json({
-            count: jobApplications.length,
-            jobApplications
-        });
+        const query = {
+            user: req.userId
+        };
+
+        // Search by company or job title
+        if (search) {
+            query.$or = [
+                { company: { $regex: search, $options: "i" } },
+                { jobTitle: { $regex: search, $options: "i" } }
+            ];
+        }
+
+        // Filter by status
+        if (status) {
+            query.status = status;
+        }
+
+        // Filter by job type
+        if (jobType) {
+            query.jobType = jobType;
+        }
+
+        const jobApplications = await JobApplication.find(query)
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limitNumber);
+    const totalCount = await JobApplication.countDocuments(query);
+    const totalPages = Math.ceil(totalCount / limitNumber);
+res.status(200).json({
+    count: totalCount,
+    page: pageNumber,
+    limit: limitNumber,
+    totalPages,
+    jobApplications
+});
 
     } catch (error) {
         res.status(500).json({
@@ -158,8 +190,9 @@ const deleteJobApplication = async (req, res) => {
         }
 
         await JobApplication.deleteOne({
-            _id: req.params.id
-        });
+    _id: req.params.id,
+    user: req.userId
+});
 
         res.status(200).json({
             message: "Job application deleted successfully"
